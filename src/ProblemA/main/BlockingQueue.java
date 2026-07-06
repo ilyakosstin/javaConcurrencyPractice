@@ -34,6 +34,20 @@ public class BlockingQueue<T> {
         }
     }
 
+    private static long waitWithTimeout(Object target, long timeoutMillis) throws TimeoutException, InterruptedException {
+        long startTimeNano = System.nanoTime();
+
+        target.wait(timeoutMillis);
+
+        timeoutMillis -= (System.nanoTime() - startTimeNano) / 1_000_000L;
+
+        if(timeoutMillis <= 0) {
+            throw new TimeoutException();
+        }
+
+        return timeoutMillis;
+    }
+
     public void offer(T element, long timeout) throws InterruptedException, TimeoutException {
         if(timeout == 0) {
             put(element);
@@ -42,15 +56,7 @@ public class BlockingQueue<T> {
 
         synchronized(buffer) {
             while(buffer.size() == capacity) {
-                long startTime = System.currentTimeMillis();
-
-                buffer.wait(timeout);
-
-                timeout -= System.currentTimeMillis() - startTime;
-
-                if(timeout <= 0) {
-                    throw new TimeoutException();
-                }
+                timeout = waitWithTimeout(buffer, timeout);
             }
             buffer.add(element);
             buffer.notifyAll();
@@ -65,15 +71,7 @@ public class BlockingQueue<T> {
 
         synchronized(buffer) {
             while(buffer.isEmpty()) {
-                long startTime = System.currentTimeMillis();
-
-                buffer.wait(timeout);
-
-                timeout -= System.currentTimeMillis() - startTime;
-
-                if(timeout <= 0) {
-                    throw new TimeoutException();
-                }
+                timeout = waitWithTimeout(buffer, timeout);
             }
             T element = buffer.poll();
             buffer.notifyAll();
@@ -81,10 +79,8 @@ public class BlockingQueue<T> {
         }
     }
 
-    public int size() {
-        synchronized(buffer) {
-            return buffer.size();
-        }
+    public synchronized int size() {
+        return buffer.size();
     }
 
     public void waitUntilEmpty() throws InterruptedException {
@@ -95,7 +91,7 @@ public class BlockingQueue<T> {
         }
     }
 
-    public void clear() throws InterruptedException {
+    public void clear() {
         synchronized(buffer) {
             buffer.clear();
             buffer.notifyAll();
