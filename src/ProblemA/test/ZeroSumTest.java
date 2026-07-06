@@ -1,112 +1,20 @@
-package solution;
+package ProblemA.test;
 
-import java.util.Queue;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
+import ProblemA.main.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeoutException;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
-
+import java.util.Random;
 import lombok.Builder;
 
-class BlockingQueue<T> {
-    private Queue<T> buffer;
-    private int capacity;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
-    public BlockingQueue(int capacity) {
-        buffer = new LinkedList<>();
-        this.capacity = capacity;
-    }
+import java.util.List;
+import java.util.stream.*;
 
-    public void put(T element) throws InterruptedException {
-        synchronized(buffer) {
-            while(buffer.size() == capacity) {
-                buffer.wait();
-            }
-            buffer.add(element);
-            buffer.notifyAll();
-        }
-    }
-
-    public T take() throws InterruptedException {
-        synchronized(buffer) {
-            while(buffer.isEmpty()) {
-                buffer.wait();
-            }
-            T element = buffer.poll();
-            buffer.notifyAll();
-            return element;
-        }
-    }
-
-    public void offer(T element, long timeout) throws InterruptedException, TimeoutException {
-        if(timeout == 0) {
-            put(element);
-            return;
-        }
-
-        synchronized(buffer) {
-            while(buffer.size() == capacity) {
-                long startTime = System.currentTimeMillis();
-
-                buffer.wait(timeout);
-
-                timeout -= System.currentTimeMillis() - startTime;
-
-                if(timeout <= 0) {
-                    throw new TimeoutException();
-                }
-            }
-            buffer.add(element);
-            buffer.notifyAll();
-        }
-    }
-
-
-    public T poll(long timeout) throws InterruptedException, TimeoutException {
-        if(timeout == 0) {
-            return take();
-        }
-
-        synchronized(buffer) {
-            while(buffer.isEmpty()) {
-                long startTime = System.currentTimeMillis();
-
-                buffer.wait(timeout);
-
-                timeout -= System.currentTimeMillis() - startTime;
-
-                if(timeout <= 0) {
-                    throw new TimeoutException();
-                }
-            }
-            T element = buffer.poll();
-            buffer.notifyAll();
-            return element;
-        }
-    }
-
-    public int size() {
-        synchronized(buffer) {
-            return buffer.size();
-        }
-    }
-
-    public void waitUntilEmpty() throws InterruptedException {
-        synchronized(buffer) {
-            while(!buffer.isEmpty()) {
-                buffer.wait();
-            }
-        }
-    }
-}
+import org.junit.jupiter.api.RepeatedTest;
 
 interface BufferTask extends Runnable {
     public int getRecievedSum();
 }
-
 
 class ConsumerTask implements BufferTask {
     private int sum;
@@ -225,26 +133,25 @@ class ZeroSumTestHarness {
 
 }
 
-public class ProblemA {
 
-    public static void main(String[] args) {
-        
-        for(int i = 0; i < 100; i++) {
-            try {
-                ZeroSumTestHarness.builder()
-                .nConsumers(5)
-                .nProducers(4)
-                .capacity(30)
-                .operationsPerProducer(40)
-                .build()
-                .test();  
-            } catch (TestFailedException e) {
-                System.out.println("fuck: " + e.getLocalizedMessage());
-                break;
-            }
+public class ZeroSumTest {
 
-        }
+    static Random rand = new Random();
+
+    @RepeatedTest(value = 30)
+    public void test() {
+
+        assertDoesNotThrow(() -> {
+            ZeroSumTestHarness.builder()
+            .nProducers(rand.nextInt(1, 5))
+            .nConsumers(rand.nextInt(1, 5))
+            .capacity(rand.nextInt(1, 500))
+            .operationsPerProducer(rand.nextInt(1, 1000))
+            .build()
+            .test();
+        });
 
     }
+
 
 }
