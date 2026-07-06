@@ -2,6 +2,7 @@ package ProblemA.test;
 
 import ProblemA.main.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.Function;
 import java.util.Random;
 import lombok.Builder;
 
@@ -100,8 +101,8 @@ class ZeroSumTestHarness {
         return Stream.concat(producers, consumers).toList();
     }
 
-    public void test() throws TestFailedException {
-        BlockingQueue<Integer> queue = new BlockingQueue<>(capacity);
+    public void test(Function<Integer, BlockingQueue<Integer>> queueSupplier) throws TestFailedException {
+        BlockingQueue<Integer> queue = queueSupplier.apply(capacity);
         CountDownLatch latch = new CountDownLatch(nProducers);
         List<BufferTask> tasks =  getTasks(queue, latch);
         List<Thread> threads = tasks.stream().map(Thread::new).toList();
@@ -134,9 +135,11 @@ class ZeroSumTestHarness {
 }
 
 
-public class ZeroSumTest {
+public abstract class AbstractZeroSumTest {
 
     static Random rand = new Random();
+
+    protected abstract BlockingQueue<Integer> provideQueue(int capacity);
 
     @RepeatedTest(value = 30)
     public void test() {
@@ -148,7 +151,7 @@ public class ZeroSumTest {
             .capacity(rand.nextInt(1, 500))
             .operationsPerProducer(rand.nextInt(1, 1000))
             .build()
-            .test();
+            .test(this::provideQueue);
         });
 
     }

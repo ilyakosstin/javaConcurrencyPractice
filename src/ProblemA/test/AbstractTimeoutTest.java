@@ -1,7 +1,6 @@
 package ProblemA.test;
 
 import org.junit.*;
-import org.junit.jupiter.api.BeforeEach;
 
 import static org.junit.Assert.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -10,7 +9,7 @@ import java.util.concurrent.TimeoutException;
 
 import ProblemA.main.BlockingQueue;
 
-public class TimeoutTest {
+public abstract class AbstractTimeoutTest {
 
 /*
 JUnit
@@ -20,17 +19,32 @@ JUnit
 4) same with poll
 */
 
+    protected abstract BlockingQueue<Integer> provideQueue(int capacity);
+
+    //private BlockingQueue<Integer> queue;
     private int capacity = 5;
-    private BlockingQueue<Integer> queue = new BlockingQueue<>(capacity);
     private int timeout = 500;
 
-    @BeforeEach
-    private void clearQueue() throws InterruptedException {
-        queue.clear();
+    private BlockingQueue<Integer> provideQueue() {
+        return provideQueue(capacity);
     }
+
+    // @BeforeAll
+    // public static void queueInit() {
+    //     //queue = provideQueue(capacity);
+    //     System.out.println("QUEUE PROVIDED!");
+    //     throw new RuntimeException("parent");
+    // }
+
+    // @BeforeEach
+    // public void clearQueue() throws InterruptedException {
+    //     queue.clear();
+    // }
 
     @Test
     public void offer_timeout_test() throws InterruptedException {
+        BlockingQueue<Integer> queue = provideQueue();
+        
         for(int i = 0; i < capacity; i++) {
             queue.put(i);
         }
@@ -42,6 +56,8 @@ JUnit
 
     @Test
     public void poll_timeout_test() {
+        BlockingQueue<Integer> queue = provideQueue();
+
         assertThrows(TimeoutException.class, () -> {
             queue.poll(timeout);
         });
@@ -49,6 +65,8 @@ JUnit
 
     @Test
     public void offer_success_test() throws InterruptedException {
+        BlockingQueue<Integer> queue = provideQueue();
+
         for(int i = 0; i < capacity; i++) {
             queue.put(i);
         }
@@ -73,6 +91,8 @@ JUnit
 
     @Test
     public void poll_success_test() throws InterruptedException {
+        BlockingQueue<Integer> queue = provideQueue();
+
         Thread thread = new Thread(() -> {
             try {
                 Thread.sleep(timeout / 2);
