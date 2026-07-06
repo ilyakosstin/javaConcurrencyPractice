@@ -1,16 +1,17 @@
 package solution;
 
-import java.util.ArrayList;
 import java.util.Queue;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-class BlockingQueue<T> {
+import lombok.Builder;
 
+class BlockingQueue<T> {
     private Queue<T> buffer;
     private int capacity;
 
@@ -33,6 +34,53 @@ class BlockingQueue<T> {
         synchronized(buffer) {
             while(buffer.isEmpty()) {
                 buffer.wait();
+            }
+            T element = buffer.poll();
+            buffer.notifyAll();
+            return element;
+        }
+    }
+
+    public void offer(T element, long timeout) throws InterruptedException, TimeoutException {
+        if(timeout == 0) {
+            put(element);
+            return;
+        }
+
+        synchronized(buffer) {
+            while(buffer.size() == capacity) {
+                long startTime = System.currentTimeMillis();
+
+                buffer.wait(timeout);
+
+                timeout -= System.currentTimeMillis() - startTime;
+
+                if(timeout <= 0) {
+                    throw new TimeoutException();
+                }
+            }
+            buffer.add(element);
+            buffer.notifyAll();
+        }
+    }
+
+
+    public T poll(long timeout) throws InterruptedException, TimeoutException {
+        if(timeout == 0) {
+            return take();
+        }
+
+        synchronized(buffer) {
+            while(buffer.isEmpty()) {
+                long startTime = System.currentTimeMillis();
+
+                buffer.wait(timeout);
+
+                timeout -= System.currentTimeMillis() - startTime;
+
+                if(timeout <= 0) {
+                    throw new TimeoutException();
+                }
             }
             T element = buffer.poll();
             buffer.notifyAll();
@@ -124,36 +172,37 @@ class ProducerTask implements BufferTask {
     }
 }
 
-class FleetFactory {
-    public record Fleet(List<BufferTask> agents, CountDownLatch producerLatch) {}
-
-    public static Fleet getFleet(BlockingQueue<Integer> stack, int nConsumers, int nProducers, int nOperPerProducer) {
-        CountDownLatch latch = new CountDownLatch(nProducers);
-        Stream<BufferTask> producers = IntStream.range(0, nProducers).mapToObj(i -> (BufferTask)(new ProducerTask(stack, latch, nOperPerProducer)));
-        Stream<BufferTask> consumers = IntStream.range(0, nConsumers).mapToObj(i -> (BufferTask)(new ConsumerTask(stack)));
-        List<BufferTask> agents = Stream.concat(producers, consumers).toList();
-        return new Fleet(agents, latch);
+class TestFailedException extends Exception {
+    public TestFailedException(String message) {
+        super(message);
     }
 }
 
-public class ProblemA {
+@Builder
+class ZeroSumTestHarness {
 
-    private static int nProducers = 6;
-    private static int nConsumers = 3;
-    private static int operationsPerProducer = 500;
-    private static int capacity = 3;
+    private final int nProducers;
+    private final int nConsumers;
+    private final int operationsPerProducer;
+    private final int capacity;
 
-    public static int test() {
-        BlockingQueue<Integer> stack = new BlockingQueue<>(capacity);
-        FleetFactory.Fleet fleet = FleetFactory.getFleet(stack, nConsumers, nProducers, operationsPerProducer);
+    private List<BufferTask> getTasks(BlockingQueue<Integer> target, CountDownLatch producerLatch) {
+        Stream<BufferTask> producers = IntStream.range(0, nProducers).mapToObj(i -> (BufferTask)(new ProducerTask(target, producerLatch, operationsPerProducer)));
+        Stream<BufferTask> consumers = IntStream.range(0, nConsumers).mapToObj(i -> (BufferTask)(new ConsumerTask(target)));
+        return Stream.concat(producers, consumers).toList();
+    }
 
-        List<Thread> threads = fleet.agents().stream().map(Thread::new).toList();
-        
+    public void test() throws TestFailedException {
+        BlockingQueue<Integer> queue = new BlockingQueue<>(capacity);
+        CountDownLatch latch = new CountDownLatch(nProducers);
+        List<BufferTask> tasks =  getTasks(queue, latch);
+        List<Thread> threads = tasks.stream().map(Thread::new).toList();
+
         threads.stream().forEach(t -> t.start());
 
         try {
-            fleet.producerLatch().await();
-            stack.waitUntilEmpty();
+            latch.await();
+            queue.waitUntilEmpty();
         } catch(InterruptedException e) {
             throw new RuntimeException("Waiting was interrupted unexpectidly", e);
         }
@@ -167,22 +216,35 @@ public class ProblemA {
             }
         });
 
-        // check sum
+        int totalSum = tasks.stream().mapToInt(task -> task.getRecievedSum()).sum();
 
-        int totalSum = fleet.agents().stream().mapToInt(agent -> agent.getRecievedSum()).sum();
-
-        return totalSum;
+        if(totalSum != 0) {
+            throw new TestFailedException("Total Sum = " + totalSum + " != 0");
+        }
     }
 
-    public static void main(String[] args) {
+}
 
-        for(int i = 1; i <= 20; i++) {
-            int ts = test();
-            if (ts != 0) {
-                System.out.println("Test " + i + ": total sum = " + ts);
-            }
-        }
+public class ProblemA {
+
+    public static void main(String[] args) {
         
+        for(int i = 0; i < 100; i++) {
+            try {
+                ZeroSumTestHarness.builder()
+                .nConsumers(5)
+                .nProducers(4)
+                .capacity(30)
+                .operationsPerProducer(40)
+                .build()
+                .test();  
+            } catch (TestFailedException e) {
+                System.out.println("fuck: " + e.getLocalizedMessage());
+                break;
+            }
+
+        }
+
     }
 
 }
